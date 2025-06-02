@@ -1,0 +1,7 @@
+geomdl
+numpy
+matplotlib
+pyqt5
+pyqtgraph
+PyOpenGL
+PyOpenGL_accelerate
