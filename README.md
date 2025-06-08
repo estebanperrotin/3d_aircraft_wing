@@ -1,6 +1,6 @@
 # Concepteur d'aile 3D Interactive
 
-Un outil interactif en Python pour dessiner ou générer deux profils d'aile (racine & saumon), créer un maillage 3D interpolé et visualiser le résultat grâce à OpenGL.
+Un outil interactif en Python pour dessiner ou générer deux profils d'aile (racine & saumon), créer un maillage 3D interpolé, visualiser le résultat grâce à OpenGL et l'exporter en .obj.
 
 ---
 
@@ -47,7 +47,7 @@ pip install -r requirements.txt
 2. **Installer les dépendances** comme indiqué ci-dessus.
 3. **Lancer l'application** :
    ```bash
-   python wing_designer.py
+   python main.py
    ```
 
 ---
@@ -78,7 +78,7 @@ pip install -r requirements.txt
 ```
 ├── wing_designer.py               # Code principal
 ├── capture.gif                    # Exemple de démo
-├── requirements.txt               # Liste des dépendances (optionnel)
+├── requirements.txt               # Liste des dépendances
 └── README.md                      # Ce fichier
 ```
 
@@ -92,4 +92,5 @@ Ce projet est sous licence MIT. Voir le fichier `LICENSE` pour plus de détails.
 
 ## Auteur
 
-- Esteban Perrotin [esteban.perrotin@proton.me]
+- Esteban Perrotin – <esteban.perrotin@proton.me>
+

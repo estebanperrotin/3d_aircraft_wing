@@ -1,7 +1,6 @@
-geomdl
 numpy
-matplotlib
-pyqt5
+PyQt5
 pyqtgraph
 PyOpenGL
-PyOpenGL_accelerate
+PyOpenGL_accelerate  # optionnel, pour perf
+
