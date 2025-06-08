@@ -8,6 +8,7 @@ Fonctionnalités :
 - Interpolation linéaire + twist entre racine et saumon.
 - Rendu accéléré via pyqtgraph.opengl.
 - Cases à cocher pour afficher/masquer le fil de fer (mesh) et la surface (texture).
+- Exporter le maillage 3D au format OBJ.
 """
 import sys
 import math
@@ -15,8 +16,9 @@ import numpy as np
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget,
     QVBoxLayout, QHBoxLayout, QFormLayout,
-    QPushButton, QLineEdit, QTabWidget, QCheckBox
-, QMessageBox)
+    QPushButton, QLineEdit, QTabWidget, QCheckBox,
+    QMessageBox, QFileDialog
+)
 from PyQt5.QtCore import Qt
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
@@ -122,9 +124,6 @@ class ProfileEditor(pg.PlotWidget):
         self.setLabel('left', 'z')
 
     def on_click(self, evt):
-        """
-        Interface clic pour ajouter un point au profil.
-        """
         ev = evt[0]
         if ev.button() != Qt.LeftButton:
             return
@@ -133,26 +132,17 @@ class ProfileEditor(pg.PlotWidget):
         x, z = vb.mapSceneToView(pos).x(), vb.mapSceneToView(pos).y()
         self.data.append((x, z))
         xs, zs = zip(*self.data)
-        # rafraîchir la courbe
         self.plotItem.clear()
         self.curve = self.plot(xs, zs, pen=pg.mkPen('b', width=2))
-        # recentrage auto
         self.plotItem.vb.autoRange()
 
     def clear(self):
-        """
-        Efface tous les points et la courbe.
-        """
         self.data.clear()
         self.plotItem.clear()
-        # recrée curve vide
         self.curve = self.plot([], [], pen=pg.mkPen('b', width=2))
         self.plotItem.vb.autoRange()
 
     def set_profile(self, pts):
-        """
-        Définit le profil à partir d'un tableau Nx2.
-        """
         self.data = [(float(x), float(z)) for x, z in pts]
         xs, zs = zip(*self.data)
         self.plotItem.clear()
@@ -160,9 +150,6 @@ class ProfileEditor(pg.PlotWidget):
         self.plotItem.vb.autoRange()
 
     def get_profile(self):
-        """
-        Retourne un numpy array Nx2 ou None s'il n'y a pas de données.
-        """
         return np.array(self.data) if self.data else None
 
 class MainWindow(QMainWindow):
@@ -213,8 +200,13 @@ class MainWindow(QMainWindow):
         btn_gen = QPushButton('Générer aile 3D')
         btn_gen.clicked.connect(self.generate_wing)
         vpanel.addWidget(btn_gen)
-        vpanel.addStretch()
 
+        # Bouton export OBJ
+        btn_export = QPushButton('Exporter OBJ')
+        btn_export.clicked.connect(self.export_obj)
+        vpanel.addWidget(btn_export)
+
+        vpanel.addStretch()
         hbox.addWidget(panel, stretch=0)
 
         # Vue OpenGL
@@ -222,11 +214,12 @@ class MainWindow(QMainWindow):
         self.view.opts['distance'] = 10
         hbox.addWidget(self.view, stretch=1)
 
-        # Placeholders pour meshes
+        # Placeholders
         self.mesh_wire = None
         self.mesh_solid = None
+        self.current_verts = None
+        self.current_faces = None
 
-        # Connexion des toggles une seule fois
         self.chk_texture.stateChanged.connect(self.update_visibility)
         self.chk_mesh.stateChanged.connect(self.update_visibility)
 
@@ -235,7 +228,6 @@ class MainWindow(QMainWindow):
             root_pts = naca4(self.root_code.text(), n=200, chord=1.0)
             tip_pts  = naca4(self.tip_code.text(),  n=200, chord=0.6)
         except Exception as e:
-            # Affiche un message d'erreur à l'utilisateur
             QMessageBox.warning(self, "Erreur NACA", f"Impossible de générer le profil NACA : {e}")
             return
         self.root_editor.set_profile(root_pts)
@@ -246,45 +238,49 @@ class MainWindow(QMainWindow):
         tip  = self.tip_editor.get_profile()
         if root is None or tip is None:
             return
-        verts, faces = generate_mesh(
-            root, tip,
-            span=5.0, twist_tip=-4.0,
-            num_chord=200, num_span=40
-        )
-        # Supprime anciens items
+        verts, faces = generate_mesh(root, tip, span=5.0, twist_tip=-4.0, num_chord=200, num_span=40)
+        self.current_verts = verts
+        self.current_faces = faces
+        # clear old
         for item in (self.mesh_wire, self.mesh_solid):
             if item:
-                try:
-                    self.view.removeItem(item)
-                except Exception:
-                    pass
+                try: self.view.removeItem(item)
+                except: pass
         meshdata = gl.MeshData(vertexes=verts, faces=faces)
-        self.mesh_solid = gl.GLMeshItem(
-            meshdata=meshdata,
-            smooth=True, drawEdges=False,
-            shader='shaded', glOptions='opaque'
-        )
-        self.mesh_wire = gl.GLMeshItem(
-            meshdata=meshdata,
-            smooth=False, drawEdges=True,
-            edgeColor=(1,1,1,1), shader='balloon'
-        )
-        # Ajoute selon les cases cochées
-        if self.chk_texture.isChecked():
-            self.view.addItem(self.mesh_solid)
-        if self.chk_mesh.isChecked():
-            self.view.addItem(self.mesh_wire)
+        self.mesh_solid = gl.GLMeshItem(meshdata=meshdata, smooth=True, drawEdges=False, shader='shaded', glOptions='opaque')
+        self.mesh_wire  = gl.GLMeshItem(meshdata=meshdata, smooth=False, drawEdges=True, edgeColor=(1,1,1,1), shader='balloon')
+        if self.chk_texture.isChecked(): self.view.addItem(self.mesh_solid)
+        if self.chk_mesh.isChecked():    self.view.addItem(self.mesh_wire)
 
     def update_visibility(self):
-        # Retire et réajoute selon état
         for item in (self.mesh_solid, self.mesh_wire):
             if item:
                 try: self.view.removeItem(item)
                 except: pass
-        if self.mesh_solid and self.chk_texture.isChecked():
-            self.view.addItem(self.mesh_solid)
-        if self.mesh_wire and self.chk_mesh.isChecked():
-            self.view.addItem(self.mesh_wire)
+        if self.mesh_solid and self.chk_texture.isChecked(): self.view.addItem(self.mesh_solid)
+        if self.mesh_wire  and self.chk_mesh.isChecked():    self.view.addItem(self.mesh_wire)
+
+    def export_obj(self):
+        """
+        Exporte le maillage courant au format OBJ.
+        """
+        if self.current_verts is None or self.current_faces is None:
+            QMessageBox.warning(self, "Aucun maillage", "Générez d'abord la géométrie avant d'exporter.")
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Enregistrer OBJ", "wing.obj", "OBJ Files (*.obj)")
+        if not path:
+            return
+        try:
+            with open(path, 'w') as f:
+                for v in self.current_verts:
+                    f.write(f"v {v[0]} {v[1]} {v[2]}\n")
+                for face in self.current_faces:
+                    # OBJ index commence à 1
+                    idx = face + 1
+                    f.write(f"f {idx[0]} {idx[1]} {idx[2]}\n")
+            QMessageBox.information(self, "Export réussi", f"Maillage exporté : {path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur export", f"Impossible d'exporter : {e}")
 
 
 def main():
@@ -296,5 +292,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-
 
